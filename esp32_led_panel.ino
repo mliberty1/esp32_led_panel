@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <MatrixHardware_ESP32_V0.h>
 #include <SmartMatrix3.h>
 #include "wifi_credentials.h"
 #include "colorwheel.c"
@@ -28,12 +29,8 @@
 
 unsigned long text_duration_ms = 3000;  // Adjusted automatically depending upon text
 unsigned long text_start_ms = 0;
-uint8_t fg_red = 0xff;
-uint8_t fg_green = 0xff;
-uint8_t fg_blue = 0xff;
-uint8_t bg_red = 0x00;
-uint8_t bg_green = 0x00;
-uint8_t bg_blue = 0x00;
+uint32_t fg_color = 0x00ffffff;
+uint32_t bg_color = 0x00000000;
 
 String text("http://" MDNS_NAME ".local/");
 unsigned char scroll_pixels_per_second = 30;
@@ -83,20 +80,10 @@ const char * root_page =
 "  <form action=\"/\" method=\"post\">\n"
 "    <label for=\"text\">Text</label>\n"
 "    <input type=\"text\" id=\"text\" name=\"text\" value=\"{value}\" /><br />\n"
-"    <p>Foreground<p>\n"
-"    <label for=\"fg_red\">Red</label>\n"
-"    <input type=\"text\" id=\"fg_red\" name=\"fg_red\" value=\"{fg_red}\" /><br />\n"
-"    <label for=\"fg_green\">Green</label>\n"
-"    <input type=\"text\" id=\"fg_green\" name=\"fg_green\" value=\"{fg_green}\" /><br />\n"
-"    <label for=\"fg_blue\">Blue</label>\n"
-"    <input type=\"text\" id=\"fg_blue\" name=\"fg_blue\" value=\"{fg_blue}\" /><br />\n"
-"    <p>Background<p>\n"
-"    <label for=\"bg_red\">Red</label>\n"
-"    <input type=\"text\" id=\"bg_red\" name=\"bg_red\" value=\"{bg_red}\" /><br />\n"
-"    <label for=\"bg_green\">Green</label>\n"
-"    <input type=\"text\" id=\"bg_green\" name=\"bg_green\" value=\"{bg_green}\" /><br />\n"
-"    <label for=\"bg_blue\">Blue</label>\n"
-"    <input type=\"text\" id=\"bg_blue\" name=\"bg_blue\" value=\"{bg_blue}\" /><br />\n"
+"    <label for=\"fg_color\">Foreground</label>\n"
+"    <input type=\"color\" id=\"fg_color\" name=\"fg_color\" value=\"{fg_color}\"><br />\n"
+"    <label for=\"bg_color\">Background</label>\n"
+"    <input type=\"color\" id=\"bg_color\" name=\"bg_color\" value=\"{bg_color}\"><br />\n"
 "    <input type=\"submit\" value=\"Submit\">\n"
 "  </form>\n"
 "  <p>http://{ip_addr}/</p>\n"
@@ -109,16 +96,14 @@ String ip_addr() {
   return String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
 }
 
-
 void handleRootGet() {
   String html = root_page;
+  char color[32];
   html.replace("{value}", text);
-  html.replace("{fg_red}", String(fg_red));
-  html.replace("{fg_green}", String(fg_green));
-  html.replace("{fg_blue}", String(fg_blue));
-  html.replace("{bg_red}", String(bg_red));
-  html.replace("{bg_green}", String(bg_green));
-  html.replace("{bg_blue}", String(bg_blue));
+  snprintf(color, sizeof(color), "#%06x", fg_color & 0xffffff);
+  html.replace("{fg_color}", color);
+  snprintf(color, sizeof(color), "#%06x", bg_color & 0xffffff);
+  html.replace("{bg_color}", color);
   html.replace("{ip_addr}", ip_addr());
   server.send(200, "text/html", html);
 }
@@ -128,12 +113,8 @@ void handleRootPost() {
     return server.send(500, "text/plain", "BAD ARGS");
   }
   text = server.arg(0);
-  fg_red = server.arg(1).toInt();
-  fg_green = server.arg(2).toInt();
-  fg_blue = server.arg(3).toInt();
-  bg_red = server.arg(4).toInt();
-  bg_green = server.arg(5).toInt();
-  bg_blue = server.arg(6).toInt();
+  fg_color = (uint32_t) strtol(server.arg(1).c_str() + 1, 0, 16);
+  bg_color = (uint32_t) strtol(server.arg(2).c_str() + 1, 0, 16);
   handleRootGet();
 }
 
@@ -152,12 +133,7 @@ void handleNotFound() {
   server.send(404, "text/plain", message);
 }
 
-// the setup() method runs once, when the sketch starts
-void setup() {
-  // initialize the digital pin as an output.
-
-  Serial.begin(115200);
-
+void setup_wifi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(wifi_ssid, wifi_password);
 
@@ -181,7 +157,9 @@ void setup() {
   server.onNotFound(handleNotFound);
   server.begin();
   Serial.println("HTTP server started");
+}
 
+void setup_led_panel() {
   matrix.addLayer(&backgroundLayer); 
   matrix.addLayer(&scrollingLayer); 
   matrix.addLayer(&indexedLayer); 
@@ -192,6 +170,15 @@ void setup() {
   scrollingLayer.setOffsetFromTop(defaultScrollOffset);
 
   backgroundLayer.enableColorCorrection(true);
+  backgroundLayer.fillScreen({0x00, 0x00, 0x00});
+  backgroundLayer.swapBuffers();
+}
+
+// the setup() method runs once, when the sketch starts
+void setup() {
+  Serial.begin(115200);
+  setup_led_panel();
+  setup_wifi();
 }
 
 // the loop() method runs over and over again,
@@ -201,7 +188,7 @@ void loop() {
     unsigned long time_now_ms;
 
     // clear screen
-    backgroundLayer.fillScreen({bg_red, bg_green, bg_blue});
+    backgroundLayer.fillScreen({(bg_color >> 16) & 0xff, (bg_color >> 8) & 0xff, (bg_color >> 0) & 0xff});
     backgroundLayer.swapBuffers();
 
     // indexedLayer.setColor({0xff, 0xff, 0xff});
@@ -211,7 +198,7 @@ void loop() {
 
     time_now_ms = millis();
     if (time_now_ms > (text_start_ms + text_duration_ms)) {
-      scrollingLayer.setColor({fg_red, fg_green, fg_blue});
+      scrollingLayer.setColor({(fg_color >> 16) & 0xff, (fg_color >> 8) & 0xff, (fg_color >> 0) & 0xff});
       scrollingLayer.setMode(wrapForward);
       scrollingLayer.setSpeed(scroll_pixels_per_second);
       scrollingLayer.setFont(font6x10);

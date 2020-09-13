@@ -11,7 +11,9 @@ To build this project:
 * Install the [Arduino IDE](https://www.arduino.cc/)
 * Install the ESP32 boards - [Instructions](https://github.com/espressif/arduino-esp32)
 * Install the [SmartMatrix](https://github.com/pixelmatix/SmartMatrix/tree/teensy4) teensy branch to Documents/Arduino.
+  git checkout teensy4
 * Apply the SmartMatrix changes from [smartmatrix.diff](smartmatrix.diff).
+  git apply {path}/smartmatrix.diff
 * Open esp32_led_panel.ino.
 * Select the ESP32-DevKit target.
 * Select your ESP32 com port.
